@@ -1,8 +1,7 @@
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
-use winit::platform::web::WindowBuilderExtWebSys;
-use winit::window::{Window, WindowBuilder};
+use winit::window::Window;
 
 
 pub trait Runnable<'a> {
