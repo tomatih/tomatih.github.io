@@ -17,10 +17,18 @@ winit = { version = "0.29", features = ["rwh_05"] }
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 wgpu = { version = "0.20.1", features = ["webgl"] }
 log = "0.4.22"
-
+cgmath = "0.18.0"
+bytemuck = { version = "1.16.1", features = ["derive"] }
+reqwest = "0.12.7"
+anyhow = "1.0.89"
+getrandom = { version = "0.2", features = ["js"] }
+tobj = { version = "4.0.2", features = ["async"] }
 
 [dependencies.web-sys]
 version = "0.3.70"
-features = [
-    "Window"
-]
+features = ["Window", "Location"]
+
+[dependencies.image]
+version = "0.25.2"
+default-features = false
+features = ["png", "jpeg", "qoi", "rayon"]

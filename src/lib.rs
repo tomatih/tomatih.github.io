@@ -1,5 +1,11 @@
 mod runnable;
 mod wip_page;
+mod grapics_context;
+mod wgpu_helpers;
+mod texture;
+mod resources;
+mod model;
+mod camera;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 use winit::dpi::PhysicalSize;
