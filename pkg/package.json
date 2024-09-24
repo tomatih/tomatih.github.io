@@ -1,0 +1,20 @@
+{
+  "name": "personal_page",
+  "type": "module",
+  "description": "A personal website written using WGPU",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tomatih/tomatih.github.io"
+  },
+  "files": [
+    "personal_page_bg.wasm",
+    "personal_page.js",
+    "personal_page.d.ts"
+  ],
+  "main": "personal_page.js",
+  "types": "personal_page.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
