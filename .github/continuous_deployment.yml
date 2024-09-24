@@ -4,22 +4,30 @@ on:
     branches: [main]
 
 jobs:
-  release:
+  deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions-rs/toolchain@v1
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           target: wasm32-unknown-unknown
 
-      - uses: jetli/wasm-pack-action@v0.4.0
-      - uses: jetli/wasm-bindgen-action@v0.2.0
+      - name: Setup WASM pack
+        uses: jetli/wasm-pack-action@v0.4.0
 
-      - uses: actions/checkout@v2
+      - name: Setup WASM bindgen
+        uses: jetli/wasm-bindgen-action@v0.2.0
+
+      - uses: actions/checkout@v3
 
       - run: wasm-pack build --target web --release
 
-      - uses: peaceiris/actions-gh-pages@v4
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./pkg
