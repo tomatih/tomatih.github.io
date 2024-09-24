@@ -2,7 +2,7 @@ use crate::camera;
 use crate::grapics_context::GraphicsContext;
 use std::time::Duration;
 use bytemuck::{Pod, Zeroable};
-use cgmath::{One, Quaternion, Vector3};
+use cgmath::{Deg, One, Quaternion, Rotation3, Vector3};
 use wgpu::util::DeviceExt;
 use wgpu::SurfaceError;
 use winit::dpi::PhysicalSize;
@@ -83,7 +83,7 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
         );
 
         // camera setup
-        let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
+        let camera = camera::Camera::new((0.0, 1.0, 2.5), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
         let projection = camera::Projection::new(graphics_context.config.width, graphics_context.config.height, cgmath::Deg(45.0), 0.1, 100.0);
 
         let mut camera_uniform = camera::CameraUniform::new();
@@ -126,7 +126,7 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
 
         // light setup
         let light_uniform = LightUniform {
-            position: [2.0, 2.0, 2.0],
+            position: [-5.0, 0.0, -5.0],
             _padding: 0.0,
             color: [1.0, 1.0, 1.0],
             _padding2: 0.0,
@@ -199,7 +199,7 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
         let depth_texture = Texture::create_depth_texture(&graphics_context.device, &graphics_context.config, "depth_texture");
 
         // Model
-        let obj_model = crate::resources::load_model("cube.obj", &graphics_context.device, &graphics_context.queue, &texture_bind_group_layout).await.unwrap();
+        let obj_model = crate::resources::load_model("WIP.obj", &graphics_context.device, &graphics_context.queue, &texture_bind_group_layout).await.unwrap();
 
         // instances
         let instances = vec![Instance{
@@ -234,7 +234,14 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
         }
     }
 
-    fn update(&mut self, _dt: Duration) {}
+    fn update(&mut self, dt: Duration) {
+        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
+        self.light_uniform.position =
+            (cgmath::Quaternion::from_axis_angle(Vector3::unit_x(), cgmath::Deg(60.0 * dt.as_secs_f32()))
+                * old_position)
+                .into();
+        self.graphics_context.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
+    }
 
     fn render(&mut self) -> Result<(), SurfaceError> {
         let output = self.graphics_context.surface.get_current_texture()?;

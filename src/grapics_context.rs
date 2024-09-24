@@ -1,7 +1,7 @@
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::window::Window;
 
-pub struct GraphicsContext<'a>{
+pub struct GraphicsContext<'a> {
     pub surface: wgpu::Surface<'a>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
@@ -10,7 +10,7 @@ pub struct GraphicsContext<'a>{
     pub window: &'a Window,
 }
 
-impl<'a> GraphicsContext<'a>{
+impl<'a> GraphicsContext<'a> {
     pub async fn new(window: &'a Window) -> Self {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -52,7 +52,7 @@ impl<'a> GraphicsContext<'a>{
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
-        surface.configure(&device,&config);
+        surface.configure(&device, &config);
 
         Self {
             surface,
@@ -70,10 +70,24 @@ impl<'a> GraphicsContext<'a>{
             let scaling = window_browser.device_pixel_ratio();
 
             let limits = self.device.limits();
-            let scaled_size = new_size.to_logical(scaling).clamp(
+
+            let mut scaled_size = new_size.to_logical(scaling);
+
+            /*.clamp(
                 LogicalSize::new(1, 1),
                 LogicalSize::new(limits.max_texture_dimension_2d, limits.max_texture_dimension_2d),
-            );
+            );*/
+
+            if (scaled_size.height > limits.max_texture_dimension_2d) || (scaled_size.width > limits.max_texture_dimension_2d) {
+                if scaled_size.width > scaled_size.height{
+                    scaled_size.height = ( (scaled_size.height as f32 / scaled_size.width as f32) * limits.max_texture_dimension_2d as f32 ) as u32;
+                    scaled_size.width = limits.max_texture_dimension_2d;
+                }
+                else {
+                    scaled_size.width = ( (scaled_size.width as f32 / scaled_size.height as f32) * limits.max_texture_dimension_2d as f32 ) as u32;
+                    scaled_size.height = limits.max_texture_dimension_2d;
+                }
+            }
 
             self.size = new_size;
             self.config.width = scaled_size.width;
@@ -81,5 +95,4 @@ impl<'a> GraphicsContext<'a>{
             self.surface.configure(&self.device, &self.config);
         }
     }
-
 }
