@@ -31,7 +31,8 @@ impl<'a> GraphicsContext<'a> {
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                required_limits: wgpu::Limits::downlevel_webgl2_defaults()
+                    .using_resolution(adapter.limits()),
                 label: None,
             },
             None,
@@ -73,18 +74,12 @@ impl<'a> GraphicsContext<'a> {
 
             let mut scaled_size = new_size.to_logical(scaling);
 
-            /*.clamp(
-                LogicalSize::new(1, 1),
-                LogicalSize::new(limits.max_texture_dimension_2d, limits.max_texture_dimension_2d),
-            );*/
-
             if (scaled_size.height > limits.max_texture_dimension_2d) || (scaled_size.width > limits.max_texture_dimension_2d) {
-                if scaled_size.width > scaled_size.height{
-                    scaled_size.height = ( (scaled_size.height as f32 / scaled_size.width as f32) * limits.max_texture_dimension_2d as f32 ) as u32;
+                if scaled_size.width > scaled_size.height {
+                    scaled_size.height = ((scaled_size.height as f32 / scaled_size.width as f32) * limits.max_texture_dimension_2d as f32) as u32;
                     scaled_size.width = limits.max_texture_dimension_2d;
-                }
-                else {
-                    scaled_size.width = ( (scaled_size.width as f32 / scaled_size.height as f32) * limits.max_texture_dimension_2d as f32 ) as u32;
+                } else {
+                    scaled_size.width = ((scaled_size.width as f32 / scaled_size.height as f32) * limits.max_texture_dimension_2d as f32) as u32;
                     scaled_size.height = limits.max_texture_dimension_2d;
                 }
             }

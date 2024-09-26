@@ -1,5 +1,5 @@
 - [ ] Loading screen for asset streaming
-- [ ] Better limit handling
+- [x] Better limit handling
 - [ ] Web GPU detection and switching
 - [ ] Actual main page
 - [ ] Showcase pages
