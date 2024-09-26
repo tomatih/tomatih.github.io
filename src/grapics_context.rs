@@ -1,3 +1,4 @@
+use wgpu::MemoryHints;
 use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::window::Window;
 
@@ -34,6 +35,7 @@ impl<'a> GraphicsContext<'a> {
                 required_limits: wgpu::Limits::downlevel_webgl2_defaults()
                     .using_resolution(adapter.limits()),
                 label: None,
+                memory_hints: MemoryHints::Performance,
             },
             None,
         ).await.unwrap();
