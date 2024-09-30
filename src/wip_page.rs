@@ -9,6 +9,7 @@ use winit::dpi::PhysicalSize;
 use winit::window::Window;
 use crate::model::{DrawModel, Instance, Vertex};
 use crate::texture::Texture;
+use crate::asset_loader::{AssetManager, AssetBundle};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
@@ -17,6 +18,26 @@ struct LightUniform {
     _padding: f32,
     color: [f32; 3],
     _padding2: f32,
+}
+
+struct Assets {
+    loaded: bool,
+}
+
+impl AssetBundle for Assets {
+    fn new() -> Self {
+        Self {
+            loaded: false
+        }
+    }
+
+    fn fully_loaded(&self) -> bool {
+        self.loaded
+    }
+
+    fn start_loading(&mut self) {
+        //TODO
+    }
 }
 
 pub struct WipPage<'a> {
@@ -34,6 +55,7 @@ pub struct WipPage<'a> {
     obj_model: crate::model::Model,
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
+    asset_manager: AssetManager<Assets>,
 }
 
 impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
@@ -202,8 +224,8 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
         let obj_model = crate::resources::load_model("WIP.obj", &graphics_context.device, &graphics_context.queue, &texture_bind_group_layout).await.unwrap();
 
         // instances
-        let instances = vec![Instance{
-            position: Vector3{x: 0.0, y: 0.0, z: 0.0},
+        let instances = vec![Instance {
+            position: Vector3 { x: 0.0, y: 0.0, z: 0.0 },
             rotation: Quaternion::one()
         }];
         let instances_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
@@ -215,6 +237,8 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
             }
         );
 
+        // Assets
+        let asset_manager = AssetManager::new(&graphics_context);
 
         Self {
             graphics_context,
@@ -231,6 +255,7 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
             obj_model,
             instances,
             instance_buffer,
+            asset_manager,
         }
     }
 
@@ -250,7 +275,6 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
         let mut encoder = self.graphics_context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render encoder")
         });
-
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render pass"),
@@ -267,7 +291,7 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment:  Some(wgpu::RenderPassDepthStencilAttachment {
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
@@ -279,12 +303,16 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
                 timestamp_writes: None,
             });
 
+            self.asset_manager.render_loading(&mut render_pass);
 
-            use crate::model::DrawModel;
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.draw_model_instanced(&self.obj_model, &self.camera_bind_group, &self.light_bind_group, 0..1);
+            if self.asset_manager.loaded() {
+                use crate::model::DrawModel;
+                render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.draw_model_instanced(&self.obj_model, &self.camera_bind_group, &self.light_bind_group, 0..1);
+            }
         }
+
 
         self.graphics_context.queue.submit(std::iter::once(encoder.finish()));
         output.present();

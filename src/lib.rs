@@ -6,6 +6,7 @@ mod texture;
 mod resources;
 mod model;
 mod camera;
+mod asset_loader;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 use winit::dpi::PhysicalSize;
