@@ -21,12 +21,11 @@ cgmath = "0.18.0"
 bytemuck = { version = "1.16.1", features = ["derive"] }
 reqwest = "0.12.7"
 anyhow = "1.0.89"
-getrandom = { version = "0.2", features = ["js"] }
 tobj = { version = "4.0.2", features = ["async"] }
 
 [dependencies.web-sys]
 version = "0.3.70"
-features = ["Window", "Location"]
+features = ["Window", "Location", "Worker", "MessageEvent"]
 
 [dependencies.image]
 version = "0.25.2"

@@ -1,15 +1,21 @@
+use crate::asset_loader::{AssetBundle, AssetManager};
 use crate::camera;
 use crate::grapics_context::GraphicsContext;
-use std::time::Duration;
+use crate::model::{DrawModel, Instance, Model, Vertex};
+use crate::texture::Texture;
 use bytemuck::{Pod, Zeroable};
 use cgmath::{Deg, One, Quaternion, Rotation3, Vector3};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::Duration;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use web_sys::{MessageEvent, Worker};
 use wgpu::util::DeviceExt;
 use wgpu::SurfaceError;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
-use crate::model::{DrawModel, Instance, Vertex};
-use crate::texture::Texture;
-use crate::asset_loader::{AssetManager, AssetBundle};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Pod, Zeroable)]
@@ -21,22 +27,51 @@ struct LightUniform {
 }
 
 struct Assets {
+    loader: Rc<RefCell<Worker>>,
     loaded: bool,
+
+    tx: Sender<Vec<u8>>,
+    rx: Receiver<Vec<u8>>,
+
+    obj_model: Option<Model>,
+}
+
+impl Assets {
+    fn get_handler(&self) -> Closure<dyn FnMut(MessageEvent)> {
+        let tx = self.tx.clone();
+        Closure::new(move |event: MessageEvent| {
+            log::info!("Message Gotten");
+            tx.send(Vec::new()).unwrap();
+        })
+    }
 }
 
 impl AssetBundle for Assets {
-    fn new() -> Self {
+    fn new(loader: Rc<RefCell<Worker>>) -> Self {
+        let (tx, rx) = channel::<Vec<u8>>();
+
         Self {
-            loaded: false
+            loader,
+            loaded: false,
+            tx,
+            rx,
+            obj_model: None,
         }
     }
 
-    fn fully_loaded(&self) -> bool {
+    fn fully_loaded(&mut self) -> bool {
+        if !self.loaded {
+            self.loaded = self.rx.try_recv().is_ok();
+        }
         self.loaded
     }
 
-    fn start_loading(&mut self) {
-        //TODO
+    fn start_loading(&mut self, graphics_context: &GraphicsContext) {
+        let worker = &*self.loader.borrow();
+        worker.post_message(&"WIP.obj".into()).unwrap();
+        let handler = self.get_handler();
+        worker.set_onmessage(Some(handler.as_ref().unchecked_ref()));
+        handler.forget();
     }
 }
 
@@ -64,87 +99,97 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
         let graphics_context = GraphicsContext::new(window).await;
 
         // texture setup
-        let texture_bind_group_layout = graphics_context.device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        let texture_bind_group_layout =
+            graphics_context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            },
+                            count: None,
                         },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
                         },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            }
-        );
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
+                    label: Some("texture_bind_group_layout"),
+                });
 
         // camera setup
         let camera = camera::Camera::new((0.0, 1.0, 2.5), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
-        let projection = camera::Projection::new(graphics_context.config.width, graphics_context.config.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let projection = camera::Projection::new(
+            graphics_context.config.width,
+            graphics_context.config.height,
+            cgmath::Deg(45.0),
+            0.1,
+            100.0,
+        );
 
         let mut camera_uniform = camera::CameraUniform::new();
         camera_uniform.update_view_proj(&camera, &projection);
 
-        let camera_buffer = graphics_context.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Camera Buffer"),
-                contents: bytemuck::cast_slice(&[camera_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }
-        );
+        let camera_buffer =
+            graphics_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Camera Buffer"),
+                    contents: bytemuck::cast_slice(&[camera_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
 
-        let camera_bind_group_layout = graphics_context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }
-            ],
-            label: Some("camera bing group layout"),
-        });
+        let camera_bind_group_layout =
+            graphics_context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                    label: Some("camera bing group layout"),
+                });
 
-        let camera_bind_group = graphics_context.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }
-            ],
-            label: Some("camera bind group"),
-        });
+        let camera_bind_group =
+            graphics_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &camera_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: camera_buffer.as_entire_binding(),
+                    }],
+                    label: Some("camera bind group"),
+                });
 
         // light setup
         let light_uniform = LightUniform {
@@ -154,18 +199,20 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
             _padding2: 0.0,
         };
 
-        let light_buffer = graphics_context.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Light Buffer"),
-                contents: bytemuck::cast_slice(&[light_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }
-        );
+        let light_buffer =
+            graphics_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Light Buffer"),
+                    contents: bytemuck::cast_slice(&[light_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
 
-        let light_bind_group_layout = graphics_context.device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
+        let light_bind_group_layout =
+            graphics_context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
@@ -174,34 +221,35 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
                             min_binding_size: None,
                         },
                         count: None,
-                    }
-                ],
-                label: None,
-            }
-        );
+                    }],
+                    label: None,
+                });
 
-        let light_bind_group = graphics_context.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &light_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: light_buffer.as_entire_binding(),
-                }
-            ],
-            label: None,
-        });
-
+        let light_bind_group =
+            graphics_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &light_bind_group_layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: light_buffer.as_entire_binding(),
+                    }],
+                    label: None,
+                });
 
         // render pipeline
-        let render_pipeline_layout = graphics_context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render pipeline layout"),
-            bind_group_layouts: &[
-                &texture_bind_group_layout,
-                &camera_bind_group_layout,
-                &light_bind_group_layout
-            ],
-            push_constant_ranges: &[],
-        });
+        let render_pipeline_layout =
+            graphics_context
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render pipeline layout"),
+                    bind_group_layouts: &[
+                        &texture_bind_group_layout,
+                        &camera_bind_group_layout,
+                        &light_bind_group_layout,
+                    ],
+                    push_constant_ranges: &[],
+                });
         let render_pipeline = {
             let shader = wgpu::ShaderModuleDescriptor {
                 label: Some("Normal Shader"),
@@ -212,30 +260,49 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
                 &render_pipeline_layout,
                 graphics_context.config.format,
                 Some(Texture::DEPTH_FORMAT),
-                &[crate::model::ModelVertex::desc(), crate::model::InstanceRaw::desc()],
+                &[
+                    crate::model::ModelVertex::desc(),
+                    crate::model::InstanceRaw::desc(),
+                ],
                 shader,
             )
         };
 
         // Depth texture
-        let depth_texture = Texture::create_depth_texture(&graphics_context.device, &graphics_context.config, "depth_texture");
+        let depth_texture = Texture::create_depth_texture(
+            &graphics_context.device,
+            &graphics_context.config,
+            "depth_texture",
+        );
 
         // Model
-        let obj_model = crate::resources::load_model("WIP.obj", &graphics_context.device, &graphics_context.queue, &texture_bind_group_layout).await.unwrap();
+        let obj_model = crate::resources::load_model(
+            "WIP.obj",
+            &graphics_context.device,
+            &graphics_context.queue,
+            &texture_bind_group_layout,
+        )
+        .await
+        .unwrap();
 
         // instances
         let instances = vec![Instance {
-            position: Vector3 { x: 0.0, y: 0.0, z: 0.0 },
-            rotation: Quaternion::one()
+            position: Vector3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            rotation: Quaternion::one(),
         }];
         let instances_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = graphics_context.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instances_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
+        let instance_buffer =
+            graphics_context
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Instance Buffer"),
+                    contents: bytemuck::cast_slice(&instances_data),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
 
         // Assets
         let asset_manager = AssetManager::new(&graphics_context);
@@ -261,20 +328,30 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
 
     fn update(&mut self, dt: Duration) {
         let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position =
-            (cgmath::Quaternion::from_axis_angle(Vector3::unit_x(), cgmath::Deg(60.0 * dt.as_secs_f32()))
-                * old_position)
-                .into();
-        self.graphics_context.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
+        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
+            Vector3::unit_x(),
+            cgmath::Deg(60.0 * dt.as_secs_f32()),
+        ) * old_position)
+            .into();
+        self.graphics_context.queue.write_buffer(
+            &self.light_buffer,
+            0,
+            bytemuck::cast_slice(&[self.light_uniform]),
+        );
     }
 
     fn render(&mut self) -> Result<(), SurfaceError> {
         let output = self.graphics_context.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.graphics_context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render encoder")
-        });
+        let mut encoder =
+            self.graphics_context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render encoder"),
+                });
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render pass"),
@@ -309,12 +386,18 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
                 use crate::model::DrawModel;
                 render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
                 render_pass.set_pipeline(&self.render_pipeline);
-                render_pass.draw_model_instanced(&self.obj_model, &self.camera_bind_group, &self.light_bind_group, 0..1);
+                render_pass.draw_model_instanced(
+                    &self.obj_model,
+                    &self.camera_bind_group,
+                    &self.light_bind_group,
+                    0..1,
+                );
             }
         }
 
-
-        self.graphics_context.queue.submit(std::iter::once(encoder.finish()));
+        self.graphics_context
+            .queue
+            .submit(std::iter::once(encoder.finish()));
         output.present();
 
         Ok(())
@@ -322,10 +405,22 @@ impl<'a> crate::runnable::Runnable<'a> for WipPage<'a> {
 
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.graphics_context.resize(new_size);
-        self.depth_texture = Texture::create_depth_texture(&self.graphics_context.device, &self.graphics_context.config, "depth_texture");
-        self.projection.resize(self.graphics_context.config.width, self.graphics_context.config.height);
-        self.camera_uniform.update_view_proj(&self.camera, &self.projection);
-        self.graphics_context.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        self.depth_texture = Texture::create_depth_texture(
+            &self.graphics_context.device,
+            &self.graphics_context.config,
+            "depth_texture",
+        );
+        self.projection.resize(
+            self.graphics_context.config.width,
+            self.graphics_context.config.height,
+        );
+        self.camera_uniform
+            .update_view_proj(&self.camera, &self.projection);
+        self.graphics_context.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 
     fn get_size(&self) -> PhysicalSize<u32> {

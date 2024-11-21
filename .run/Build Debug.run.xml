@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Build Debug" type="WasmPackCommandRunConfiguration" factoryName="wasm-pack">
-    <option name="command" value="build --target web --dev" />
+    <option name="command" value="build --target no-modules --dev" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs />
     <option name="emulateTerminal" value="true" />

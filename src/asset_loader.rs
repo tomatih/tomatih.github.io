@@ -1,27 +1,33 @@
-use wgpu::RenderPass;
 use crate::grapics_context::GraphicsContext;
 use crate::texture::Texture;
+use std::cell::RefCell;
+use std::rc::Rc;
+use web_sys::Worker;
+use wgpu::RenderPass;
 
 pub trait AssetBundle{
 
-    fn new() -> Self;
-    fn fully_loaded(&self) -> bool;
+    fn new(loader: Rc<RefCell<Worker>>) -> Self;
+    fn fully_loaded(&mut self) -> bool;
 
-    fn start_loading(&mut self);
+    fn start_loading(&mut self, graphics_context: &GraphicsContext);
 }
 
 
 pub struct AssetManager<A: AssetBundle>{
     loaded_cache: bool,
     asset_bundle: A,
-    loading_pipeline: wgpu::RenderPipeline
+    loading_pipeline: wgpu::RenderPipeline,
+    loader: Rc<RefCell<Worker>>
 }
 
 impl<A:AssetBundle> AssetManager<A> {
     pub fn new(graphics_context: &GraphicsContext) -> Self<>{
+        // create worker
+        let loader = Rc::new(RefCell::new(Worker::new("./load_worker.js").unwrap()));
         // asset loading
-        let mut asset_bundle = A::new();
-        asset_bundle.start_loading();
+        let mut asset_bundle = A::new(loader.clone());
+        asset_bundle.start_loading(graphics_context);
 
         // define pipeline
         let loading_pipeline_layout = graphics_context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -44,10 +50,12 @@ impl<A:AssetBundle> AssetManager<A> {
             )
         };
 
+
         Self{
             loaded_cache: false,
             asset_bundle,
             loading_pipeline,
+            loader
         }
     }
 

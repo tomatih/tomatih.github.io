@@ -1,12 +1,13 @@
-mod runnable;
-mod wip_page;
-mod grapics_context;
-mod wgpu_helpers;
-mod texture;
-mod resources;
-mod model;
-mod camera;
 mod asset_loader;
+mod camera;
+mod grapics_context;
+mod load_worker;
+mod model;
+mod resources;
+mod runnable;
+mod texture;
+mod wgpu_helpers;
+mod wip_page;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 use winit::dpi::PhysicalSize;
@@ -31,8 +32,8 @@ fn create_window(event_loop: &EventLoop<()>) -> Window {
     window
 }
 
-#[wasm_bindgen(start)]
-fn main() {
+#[wasm_bindgen]
+pub fn main() {
     // logging setup
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init().expect("could not initialize logger");
