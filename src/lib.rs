@@ -8,6 +8,7 @@ mod runnable;
 mod texture;
 mod wgpu_helpers;
 mod wip_page;
+mod new_asset_system;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 use winit::dpi::PhysicalSize;

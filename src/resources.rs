@@ -1,36 +1,8 @@
 use std::io::{BufReader, Cursor};
 use wgpu::util::DeviceExt;
 
-fn format_url(file_name: &str) -> reqwest::Url {
-    let window = web_sys::window().unwrap();
-    let location = window.location();
-    let origin = location.origin().unwrap();
-    let base = reqwest::Url::parse(&format!("{}/assets/", origin)).unwrap();
-    base.join(file_name).unwrap()
-}
-
-pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
-    let url = format_url(file_name);
-    let text = reqwest::get(url)
-        .await?
-        .text()
-        .await?;
-    Ok(text)
-}
-
-pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
-    let url = format_url(file_name);
-    let data = reqwest::get(url)
-        .await?
-        .bytes()
-        .await?
-        .to_vec();
-    Ok(data)
-}
-
-pub async fn load_texture(file_name: &str, is_normal_map: bool, device: &wgpu::Device, queue: &wgpu::Queue) -> anyhow::Result<crate::texture::Texture> {
-    let data = load_binary(file_name).await?;
-    crate::texture::Texture::from_bytes(device, queue, &data, file_name, is_normal_map)
+pub async fn load_texture(data: Vec<u8>, is_normal_map: bool, device: &wgpu::Device, queue: &wgpu::Queue) -> anyhow::Result<crate::texture::Texture> {
+    crate::texture::Texture::from_bytes(device, queue, &data, "Tmp texture label", is_normal_map)
 }
 
 pub async fn load_model(
